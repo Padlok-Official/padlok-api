@@ -63,3 +63,23 @@ export const logout: RequestHandler = async (req, res, next) => {
     next(err);
   }
 };
+
+export const acceptInvitation: RequestHandler = async (req, res, next) => {
+  try {
+    const { token, name, password } = req.body as {
+      token: string;
+      name: string;
+      password: string;
+    };
+    const result = await authService.acceptInvitation({
+      token,
+      name,
+      password,
+      ipAddress: ipFrom(req),
+      userAgent: uaFrom(req),
+    });
+    return ok(res, result, 'Welcome to PadLok', 201);
+  } catch (err) {
+    next(err);
+  }
+};

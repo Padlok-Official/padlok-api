@@ -6,8 +6,8 @@
  */
 
 import { env } from '@/config/env';
-import { Unauthorized, Forbidden } from '@/utils/AppError';
-import { verifyPassword } from '@/utils/password';
+import { BadRequest, Unauthorized, Forbidden } from '@/utils/AppError';
+import { hashPassword, verifyPassword } from '@/utils/password';
 import {
   signAccessToken,
   signRefreshToken,
@@ -16,7 +16,9 @@ import {
   parseDurationToMs,
 } from '@/utils/jwt';
 import { setCachedAdmin, invalidateCachedAdmin } from '@/utils/adminCache';
+import { withTransaction } from '@/utils/withTransaction';
 import * as AdminModel from '@/models/Admin';
+import * as AdminInvitationModel from '@/models/AdminInvitation';
 import * as RefreshTokenModel from '@/models/AdminRefreshToken';
 import * as AuditLogModel from '@/models/AdminAuditLog';
 import type { AdminDTO } from '@/types/admin';
@@ -178,6 +180,87 @@ export const logout = async (
     ipAddress: context.ipAddress,
     userAgent: context.userAgent,
   });
+};
+
+/**
+ * Consume an invitation: validate the token, create the admin with the
+ * role baked into the invitation, mark the invitation accepted, and
+ * return a fresh token pair so the new admin is logged in immediately.
+ *
+ * All writes run in a single transaction so we never end up with a
+ * created admin + unmarked invitation (or vice versa).
+ */
+export interface AcceptInvitationInput {
+  token: string;
+  name: string;
+  password: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+}
+
+export const acceptInvitation = async (
+  input: AcceptInvitationInput,
+): Promise<LoginResult> => {
+  const invitation = await AdminInvitationModel.findByRawToken(input.token);
+  if (!invitation) throw BadRequest('Invalid or expired invitation');
+
+  if (invitation.status !== 'pending') {
+    throw BadRequest(`Invitation is already ${invitation.status}`);
+  }
+  if (invitation.expires_at < new Date()) {
+    throw BadRequest('Invitation has expired — ask for a new one');
+  }
+
+  // Create admin + mark invitation accepted atomically
+  const passwordHash = await hashPassword(input.password);
+  const adminId = await withTransaction(async (client) => {
+    // Double-check email isn't already taken (race protection)
+    const existing = await client.query(
+      `SELECT id FROM admins WHERE LOWER(email) = $1 AND deleted_at IS NULL LIMIT 1`,
+      [invitation.email],
+    );
+    if (existing.rows.length > 0) {
+      throw new Error('Email already taken');
+    }
+
+    const admin = await AdminModel.createAdmin(
+      {
+        name: input.name.trim(),
+        email: invitation.email,
+        passwordHash,
+        roleId: invitation.role_id,
+        invitedBy: invitation.invited_by,
+      },
+      client,
+    );
+    await AdminInvitationModel.markAccepted(invitation.id, admin.id, client);
+    return admin.id;
+  });
+
+  await AuditLogModel.record({
+    adminId,
+    action: 'auth.invitation.accepted',
+    entityType: 'invitation',
+    entityId: invitation.id,
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent,
+  });
+
+  // Load the fresh admin with permissions + issue tokens
+  const awp = await AdminModel.findByIdWithPermissions(adminId);
+  if (!awp) throw new Error('Admin creation succeeded but lookup failed');
+
+  const pair = await issueTokenPair(awp.admin.id, awp.admin.email, awp.admin.role_id, {
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent,
+  });
+  await setCachedAdmin(awp.admin.id, awp);
+  await AdminModel.updateLastLogin(awp.admin.id, input.ipAddress);
+
+  return {
+    ...pair,
+    admin: AdminModel.toDTO(awp),
+  };
 };
 
 /**
