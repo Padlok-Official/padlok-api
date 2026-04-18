@@ -11,13 +11,16 @@ const redisStore = () =>
     sendCommand: (...args: string[]) => redis.call(args[0], ...args.slice(1)) as Promise<never>,
   });
 
-const buildLimiter = (overrides: Partial<Options> = {}) =>
-  rateLimit({
+const buildLimiter = (overrides: Partial<Options> = {}) => {
+  // In the test environment, use the default (in-memory) store to avoid
+  // a hard Redis dependency in unit/integration tests.
+  const useMemory = env.nodeEnv === 'test';
+  return rateLimit({
     windowMs: env.rateLimit.windowMs,
     limit: env.rateLimit.maxRequests,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
-    store: redisStore(),
+    ...(useMemory ? {} : { store: redisStore() }),
     // Allow requests through when the store errors (Redis outage) so the API
     // stays available. Errors are logged for observability.
     skip: () => false,
@@ -25,6 +28,7 @@ const buildLimiter = (overrides: Partial<Options> = {}) =>
     requestWasSuccessful: (_req, res) => res.statusCode < 500,
     ...overrides,
   });
+};
 
 // express-rate-limit default behavior: if the store throws, it emits an
 // error. We want to log and let the request through rather than 500.

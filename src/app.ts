@@ -12,6 +12,7 @@ import { pingRedis } from '@/config/redis';
 import { generalLimiter } from '@/middleware/security';
 import { errorHandler, notFoundHandler } from '@/middleware/errorHandler';
 import { ok, fail } from '@/utils/respond';
+import authRoutes from '@/features/auth/authRoutes';
 
 export const createApp = (): Application => {
   const app = express();
@@ -67,9 +68,9 @@ export const createApp = (): Application => {
         });
   });
 
-  // Feature routes will be mounted here as they're built.
-  // Example:
-  //   app.use(`${env.apiPrefix}/auth`, authRoutes);
+  // Feature routes
+  app.use(`${env.apiPrefix}/auth`, authRoutes);
+  // Upcoming:
   //   app.use(`${env.apiPrefix}/admins`, adminRoutes);
   //   app.use(`${env.apiPrefix}/roles`, roleRoutes);
   //   app.use(`${env.apiPrefix}/analytics`, analyticsRoutes);
