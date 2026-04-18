@@ -1,6 +1,6 @@
 # PadLok API
 
-Unified backend for the PadLok platform — serves the admin dashboard and (in a later iteration) the client mobile app.
+Admin / operations backend for the PadLok dashboard. This service does **not** power the mobile client app — that's `padlokbackend`'s job. We read from the same PostgreSQL database so admins can manage escrow, disputes, flags, and users that the client backend owns; we write to our own admin-specific tables (admins, roles, permissions, invitations, audit logs).
 
 ## Stack
 
@@ -71,6 +71,25 @@ All routes are prefixed with `/api/v1` (configurable via `API_PREFIX`).
 - Subsequent requests must include `Authorization: Bearer <jwt>`.
 - Each endpoint that mutates state requires a specific permission key, enforced by `requirePermission('key')` middleware.
 
+## Scope — what this API does and doesn't
+
+**Does:**
+- Authenticates admin/operator accounts (separate from client users)
+- Manages roles, custom permissions, and invitations to new admins
+- Surfaces BI analytics from the shared DB (platform activity, revenue, disputes, etc.)
+- Provides admin tools to resolve disputes, flag users, send broadcasts, etc.
+- Owns the admin tables: `admins`, `admin_roles`, `admin_permissions`,
+  `role_permissions`, `admin_invitations`, `admin_refresh_tokens`,
+  `admin_audit_logs`, plus soon `user_flags`, `risk_alerts`,
+  `broadcast_notifications`, `notification_templates`.
+
+**Does NOT:**
+- Authenticate mobile-client users (that's `padlokbackend`)
+- Create transactions, fund wallets, or move escrow funds on behalf of users
+- Mutate client-owned tables (`users`, `wallets`, `transactions`,
+  `escrow_transactions`, `disputes`) except via explicit admin actions
+  (e.g. resolving a dispute, freezing an account)
+
 ## Status
 
-🚧 In active development. Admin/dashboard endpoints first; client mobile endpoints later.
+🚧 In active development. Admin/dashboard endpoints shipped first; more analytics + dispute + flag endpoints incoming.
