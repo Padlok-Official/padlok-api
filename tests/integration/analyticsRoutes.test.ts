@@ -46,7 +46,9 @@ describe('GET /api/v1/analytics/platform-activity', () => {
   let app: ReturnType<typeof createApp>;
   beforeAll(() => { app = createApp(); });
   beforeEach(() => {
-    jest.clearAllMocks();
+    // mockReset (not clearAllMocks) drains queued mockResolvedValueOnce.
+    pool.query.mockReset();
+    pool.connect.mockReset();
     clearRedisStore();
   });
 
