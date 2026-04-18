@@ -83,3 +83,17 @@ export const acceptInvitation: RequestHandler = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * GET /auth/invitations/:token — read-only preview for the accept-invite
+ * page. Public endpoint: the token itself is the capability.
+ */
+export const invitationPreview: RequestHandler = async (req, res, next) => {
+  try {
+    const { token } = req.params;
+    const preview = await authService.getInvitationPreview(token);
+    return ok(res, preview);
+  } catch (err) {
+    next(err);
+  }
+};

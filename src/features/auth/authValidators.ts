@@ -1,4 +1,4 @@
-import { body } from 'express-validator';
+import { body, param } from 'express-validator';
 
 export const loginValidators = [
   body('email')
@@ -28,6 +28,14 @@ export const logoutValidators = [
     .optional()
     .isString()
     .withMessage('Refresh token must be a string'),
+];
+
+export const invitationPreviewValidators = [
+  // Raw token is 64 hex chars (32 bytes). Allow a little slack for safety.
+  param('token')
+    .isString()
+    .isLength({ min: 32, max: 128 })
+    .withMessage('Invalid invitation token'),
 ];
 
 export const acceptInviteValidators = [

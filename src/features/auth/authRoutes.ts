@@ -5,6 +5,7 @@ import {
   refreshValidators,
   logoutValidators,
   acceptInviteValidators,
+  invitationPreviewValidators,
 } from './authValidators';
 import { handleValidation } from '@/middleware/validation';
 import { authLimiter } from '@/middleware/security';
@@ -21,6 +22,13 @@ router.post(
   acceptInviteValidators,
   handleValidation,
   authController.acceptInvitation,
+);
+router.get(
+  '/invitations/:token',
+  authLimiter,
+  invitationPreviewValidators,
+  handleValidation,
+  authController.invitationPreview,
 );
 
 // Authenticated

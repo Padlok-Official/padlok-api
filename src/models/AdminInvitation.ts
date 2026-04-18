@@ -90,6 +90,73 @@ export const findByRawToken = async (
   return rows[0] ?? null;
 };
 
+/**
+ * Shape returned by `findByRawTokenWithContext` — the invitation plus the
+ * role and inviter details the accept-invite page needs.
+ */
+export interface InvitationWithContext {
+  invitation: InvitationRow;
+  role: { id: string; name: string; description: string | null };
+  inviter: { id: string; name: string; email: string } | null;
+}
+
+/**
+ * Find invitation by raw token and include role + inviter in one query.
+ * Prevents the N+1 on the /auth/invitations/:token preview endpoint.
+ */
+export const findByRawTokenWithContext = async (
+  rawToken: string,
+): Promise<InvitationWithContext | null> => {
+  const { rows } = await pool.query<
+    InvitationRow & {
+      role_name: string;
+      role_description: string | null;
+      inviter_id: string | null;
+      inviter_name: string | null;
+      inviter_email: string | null;
+    }
+  >(
+    `SELECT
+       inv.*,
+       r.name AS role_name,
+       r.description AS role_description,
+       a.id AS inviter_id,
+       a.name AS inviter_name,
+       a.email AS inviter_email
+     FROM admin_invitations inv
+     JOIN admin_roles r ON r.id = inv.role_id
+     LEFT JOIN admins a ON a.id = inv.invited_by
+     WHERE inv.token_hash = $1
+     LIMIT 1`,
+    [hashToken(rawToken)],
+  );
+
+  const row = rows[0];
+  if (!row) return null;
+
+  const {
+    role_name,
+    role_description,
+    inviter_id,
+    inviter_name,
+    inviter_email,
+    ...inv
+  } = row;
+
+  return {
+    invitation: inv,
+    role: {
+      id: inv.role_id,
+      name: role_name,
+      description: role_description,
+    },
+    inviter:
+      inviter_id && inviter_name && inviter_email
+        ? { id: inviter_id, name: inviter_name, email: inviter_email }
+        : null,
+  };
+};
+
 export const findById = async (id: string): Promise<InvitationRow | null> => {
   const { rows } = await pool.query<InvitationRow>(
     `SELECT * FROM admin_invitations WHERE id = $1 LIMIT 1`,

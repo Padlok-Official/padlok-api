@@ -366,3 +366,106 @@ describe('POST /api/v1/auth/accept-invite', () => {
     expect(res.body.message).toMatch(/already accepted/i);
   });
 });
+
+// --------------------------------------------------------------------------
+// GET /auth/invitations/:token  (preview for the accept-invite page)
+// --------------------------------------------------------------------------
+
+describe('GET /api/v1/auth/invitations/:token', () => {
+  const VALID_TOKEN = 'a'.repeat(64);
+
+  const invitationJoinRow = (over: Record<string, unknown> = {}) => ({
+    // InvitationRow columns
+    id: INVITATION_UUID,
+    email: 'new@padlok.com',
+    role_id: ROLE_UUID,
+    token_hash: 'hash-value',
+    status: 'pending' as const,
+    invited_by: CURRENT_ADMIN_UUID,
+    expires_at: new Date(Date.now() + 5 * 86_400_000), // 5 days from now
+    accepted_at: null,
+    accepted_as: null,
+    created_at: new Date('2026-01-01T00:00:00Z'),
+    updated_at: new Date('2026-01-01T00:00:00Z'),
+    // joined columns
+    role_name: 'Branch Supervisor',
+    role_description: 'Manages all branches',
+    inviter_id: CURRENT_ADMIN_UUID,
+    inviter_name: 'Kwame Asante',
+    inviter_email: 'kwame@padlok.com',
+    ...over,
+  });
+
+  it('returns 400 on a token shorter than 32 chars', async () => {
+    const res = await request(app).get('/api/v1/auth/invitations/short');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 + reason=not_found for a garbage token', async () => {
+    pool.query.mockResolvedValueOnce({ rows: [] }); // findByRawTokenWithContext → no row
+    const res = await request(app).get(`/api/v1/auth/invitations/${VALID_TOKEN}`);
+    expect(res.status).toBe(400);
+    expect(res.body.reason).toBe('not_found');
+  });
+
+  it('returns 200 + preview DTO on a pending, unexpired invitation', async () => {
+    pool.query.mockResolvedValueOnce({ rows: [invitationJoinRow()] });
+
+    const res = await request(app).get(`/api/v1/auth/invitations/${VALID_TOKEN}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      data: {
+        email: 'new@padlok.com',
+        roleName: 'Branch Supervisor',
+        roleDescription: 'Manages all branches',
+        inviterName: 'Kwame Asante',
+        expiresAt: expect.any(String),
+      },
+    });
+    // No token_hash, no admin id, no PII leakage beyond what's needed
+    expect(res.body.data).not.toHaveProperty('tokenHash');
+    expect(res.body.data).not.toHaveProperty('token_hash');
+  });
+
+  it('returns 400 + reason=accepted when the invitation is already accepted', async () => {
+    pool.query.mockResolvedValueOnce({
+      rows: [invitationJoinRow({ status: 'accepted', accepted_at: new Date(), accepted_as: OTHER_ADMIN_UUID })],
+    });
+    const res = await request(app).get(`/api/v1/auth/invitations/${VALID_TOKEN}`);
+    expect(res.status).toBe(400);
+    expect(res.body.reason).toBe('accepted');
+  });
+
+  it('returns 400 + reason=revoked when the invitation was revoked', async () => {
+    pool.query.mockResolvedValueOnce({ rows: [invitationJoinRow({ status: 'revoked' })] });
+    const res = await request(app).get(`/api/v1/auth/invitations/${VALID_TOKEN}`);
+    expect(res.status).toBe(400);
+    expect(res.body.reason).toBe('revoked');
+  });
+
+  it('returns 400 + reason=expired when past the expiry timestamp', async () => {
+    pool.query.mockResolvedValueOnce({
+      rows: [invitationJoinRow({ expires_at: new Date('2020-01-01T00:00:00Z') })],
+    });
+    const res = await request(app).get(`/api/v1/auth/invitations/${VALID_TOKEN}`);
+    expect(res.status).toBe(400);
+    expect(res.body.reason).toBe('expired');
+  });
+
+  it('falls back to "A PadLok admin" when the inviter has been deleted', async () => {
+    pool.query.mockResolvedValueOnce({
+      rows: [
+        invitationJoinRow({
+          inviter_id: null,
+          inviter_name: null,
+          inviter_email: null,
+        }),
+      ],
+    });
+    const res = await request(app).get(`/api/v1/auth/invitations/${VALID_TOKEN}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.inviterName).toBe('A PadLok admin');
+  });
+});

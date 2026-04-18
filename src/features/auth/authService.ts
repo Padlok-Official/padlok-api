@@ -183,6 +183,72 @@ export const logout = async (
 };
 
 /**
+ * Preview an invitation by raw token — read-only lookup used by the
+ * accept-invite page to render "invited by X as Y" before the invitee
+ * submits their name + password.
+ *
+ * Returns a tight DTO with no sensitive fields. If the token is invalid
+ * in any way, throws BadRequest with a typed `reason` so the frontend
+ * can render the appropriate error state (expired / accepted / revoked /
+ * not_found).
+ */
+export interface InvitationPreview {
+  email: string;
+  roleName: string;
+  roleDescription: string | null;
+  inviterName: string;
+  expiresAt: string;
+}
+
+export type InvitationInvalidReason =
+  | 'not_found'
+  | 'expired'
+  | 'accepted'
+  | 'revoked';
+
+export const getInvitationPreview = async (
+  rawToken: string,
+): Promise<InvitationPreview> => {
+  const ctx = await AdminInvitationModel.findByRawTokenWithContext(rawToken);
+  if (!ctx) {
+    throw BadRequest('Invitation not found', { reason: 'not_found' as InvitationInvalidReason });
+  }
+
+  if (ctx.invitation.status === 'accepted') {
+    throw BadRequest('This invitation has already been accepted', {
+      reason: 'accepted' as InvitationInvalidReason,
+    });
+  }
+  if (ctx.invitation.status === 'revoked') {
+    throw BadRequest('This invitation has been revoked', {
+      reason: 'revoked' as InvitationInvalidReason,
+    });
+  }
+  // Pending-but-past-expiry is a soft-expired state: we still produce the
+  // typed 'expired' reason rather than relying on the invitation's own
+  // status column (which would require a separate sweep to set).
+  if (ctx.invitation.expires_at < new Date()) {
+    throw BadRequest('This invitation has expired', {
+      reason: 'expired' as InvitationInvalidReason,
+    });
+  }
+  if (ctx.invitation.status !== 'pending') {
+    // Safety net — status enum should be exhaustive above.
+    throw BadRequest('Invitation is not valid', {
+      reason: 'not_found' as InvitationInvalidReason,
+    });
+  }
+
+  return {
+    email: ctx.invitation.email,
+    roleName: ctx.role.name,
+    roleDescription: ctx.role.description,
+    inviterName: ctx.inviter?.name ?? 'A PadLok admin',
+    expiresAt: ctx.invitation.expires_at.toISOString(),
+  };
+};
+
+/**
  * Consume an invitation: validate the token, create the admin with the
  * role baked into the invitation, mark the invitation accepted, and
  * return a fresh token pair so the new admin is logged in immediately.
