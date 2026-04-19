@@ -10,6 +10,7 @@ const buildConfig = (): PoolConfig => {
   };
 
   if (env.db.url) {
+    console.log("Using DATABASE_URL for PostgreSQL connection");
     return {
       connectionString: env.db.url,
       ssl: env.db.ssl ? { rejectUnauthorized: false } : undefined,

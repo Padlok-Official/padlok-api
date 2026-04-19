@@ -5,13 +5,19 @@ import { env } from '@/config/env';
 import { logger } from '@/utils/logger';
 import { fail } from '@/utils/respond';
 
-const redisStore = () =>
+const redisStore = (prefix: string) =>
   new RedisStore({
+    prefix,
     // ioredis sendCommand signature
     sendCommand: (...args: string[]) => redis.call(args[0], ...args.slice(1)) as Promise<never>,
   });
 
-const buildLimiter = (overrides: Partial<Options> = {}) => {
+interface BuildLimiterOpts {
+  prefix: string;
+  overrides?: Partial<Options>;
+}
+
+const buildLimiter = ({ prefix, overrides = {} }: BuildLimiterOpts) => {
   // In the test environment, use the default (in-memory) store to avoid
   // a hard Redis dependency in unit/integration tests.
   const useMemory = env.nodeEnv === 'test';
@@ -20,9 +26,11 @@ const buildLimiter = (overrides: Partial<Options> = {}) => {
     limit: env.rateLimit.maxRequests,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
-    ...(useMemory ? {} : { store: redisStore() }),
-    // Allow requests through when the store errors (Redis outage) so the API
-    // stays available. Errors are logged for observability.
+    ...(useMemory ? {} : { store: redisStore(prefix) }),
+    // Stacking limiters on the same route (general + auth) trips v7's
+    // "double count per request" validator. Per-limiter Redis prefixes keep
+    // counts independent; we disable the cross-limiter sanity check too.
+    validate: { singleCount: false },
     skip: () => false,
     handler: (_req, res) => fail(res, 429, 'Too many requests, please slow down'),
     requestWasSuccessful: (_req, res) => res.statusCode < 500,
@@ -45,14 +53,17 @@ const safeLimiter = (limiter: ReturnType<typeof rateLimit>) => {
 };
 
 /** General API-wide limit: 1000 req / 15 min per IP. */
-export const generalLimiter = safeLimiter(buildLimiter());
+export const generalLimiter = safeLimiter(buildLimiter({ prefix: 'rl:general:' }));
 
 /** Stricter limit for auth endpoints: 15 req / 15 min per IP. */
 export const authLimiter = safeLimiter(
   buildLimiter({
-    limit: 15,
-    windowMs: 15 * 60 * 1000,
-    handler: (_req, res) =>
-      fail(res, 429, 'Too many authentication attempts, please try again later'),
+    prefix: 'rl:auth:',
+    overrides: {
+      limit: 15,
+      windowMs: 15 * 60 * 1000,
+      handler: (_req, res) =>
+        fail(res, 429, 'Too many authentication attempts, please try again later'),
+    },
   }),
 );
