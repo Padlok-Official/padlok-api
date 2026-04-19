@@ -304,6 +304,49 @@ export const listDisputes = async (
   };
 };
 
+export interface DisputeDetail extends DisputeRow {
+  escrow_amount: string | null;
+  escrow_currency: string | null;
+  escrow_reference: string | null;
+  escrow_item_title: string | null;
+  buyer_id: string | null;
+  buyer_name: string | null;
+  buyer_email: string | null;
+  seller_id: string | null;
+  seller_name: string | null;
+  seller_email: string | null;
+}
+
+/**
+ * Single-dispute detail used by the Evidence Panel. Joins the escrow
+ * transaction so the UI can render amount/buyer/seller without a second
+ * call, and returns null when the id doesn't match.
+ */
+export const getDispute = async (disputeId: string): Promise<DisputeDetail | null> => {
+  const { rows } = await pool.query<DisputeDetail>(
+    `SELECT ${DISPUTE_SELECT},
+            t.amount::text AS escrow_amount,
+            t.currency AS escrow_currency,
+            t.reference AS escrow_reference,
+            t.item_title AS escrow_item_title,
+            t.user_id AS buyer_id,
+            bu.name AS buyer_name,
+            bu.email AS buyer_email,
+            t.receiver_id AS seller_id,
+            su.name AS seller_name,
+            su.email AS seller_email
+     FROM disputes d
+     LEFT JOIN users ru ON ru.id = d.raised_by
+     LEFT JOIN users au ON au.id = d.admin_id
+     LEFT JOIN transactions t ON t.id = d.escrow_transaction_id
+     LEFT JOIN users bu ON bu.id = t.user_id
+     LEFT JOIN users su ON su.id = t.receiver_id
+     WHERE d.id = $1`,
+    [disputeId],
+  );
+  return rows[0] ?? null;
+};
+
 export interface DisputeStats {
   open: number;
   under_review: number;

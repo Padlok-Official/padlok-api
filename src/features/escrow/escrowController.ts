@@ -61,6 +61,19 @@ export const disputeTimeline: RequestHandler = async (req, res, next) => {
   }
 };
 
+export const getDispute: RequestHandler = async (req, res, next) => {
+  try {
+    const dispute = await escrowService.getDispute(req.params.id);
+    if (!dispute) {
+      res.status(404).json({ success: false, message: 'Dispute not found' });
+      return;
+    }
+    return ok(res, dispute);
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const listDisputes: RequestHandler = async (req, res, next) => {
   try {
     const { page, limit } = parsePagination(req, { defaultLimit: 20, maxLimit: 100 });

@@ -37,6 +37,13 @@ router.get(
   escrowController.disputeTimeline,
 );
 
+// GET /api/v1/escrow/disputes/:id — dispute detail + associated escrow.
+router.get(
+  '/disputes/:id',
+  requirePermission('view_disputes'),
+  escrowController.getDispute,
+);
+
 // GET /api/v1/escrow/disputes — list disputes.
 router.get(
   '/disputes',
