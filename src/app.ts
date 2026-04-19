@@ -17,6 +17,8 @@ import analyticsRoutes from '@/features/analytics/analyticsRoutes';
 import roleRoutes from '@/features/role/roleRoutes';
 import permissionRoutes from '@/features/role/permissionRoutes';
 import adminRoutes from '@/features/admin/adminRoutes';
+import escrowRoutes from '@/features/escrow/escrowRoutes';
+import walletRoutes from '@/features/wallet/walletRoutes';
 
 export const createApp = (): Application => {
   const app = express();
@@ -74,11 +76,12 @@ export const createApp = (): Application => {
 
   // Feature routes
   app.use(`${env.apiPrefix}/auth`, authRoutes);
+  app.use(`${env.apiPrefix}/escrow`, escrowRoutes);
+  app.use(`${env.apiPrefix}/wallet`, walletRoutes);
   app.use(`${env.apiPrefix}/analytics`, analyticsRoutes);
   app.use(`${env.apiPrefix}/roles`, roleRoutes);
   app.use(`${env.apiPrefix}/permissions`, permissionRoutes);
   app.use(`${env.apiPrefix}/admins`, adminRoutes);
-  //   app.use(`${env.apiPrefix}/disputes`, disputeRoutes);
   //   app.use(`${env.apiPrefix}/flags`, flagRoutes);
   //   app.use(`${env.apiPrefix}/notifications`, notificationRoutes);
 

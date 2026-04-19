@@ -6,8 +6,13 @@
  */
 
 import { env } from '@/config/env';
-import { BadRequest, Unauthorized, Forbidden } from '@/utils/AppError';
-import { hashPassword, verifyPassword } from '@/utils/password';
+import { BadRequest,
+	Unauthorized,
+	Forbidden,
+	Conflict,
+	UnprocessableEntity,
+} from "@/utils/AppError";
+import { hashPassword, verifyPassword } from "@/utils/password";
 import {
   signAccessToken,
   signRefreshToken,

@@ -186,18 +186,44 @@ export const createAdmin = async (
     email: string;
     passwordHash: string;
     roleId: string;
+    phoneNumber?: string | null;
     invitedBy?: string | null;
   },
   client?: PoolClient,
 ): Promise<AdminRow> => {
   const runner = client ?? pool;
   const { rows } = await runner.query<AdminRow>(
-    `INSERT INTO admins (name, email, password_hash, role_id, invited_by, status)
-     VALUES ($1, LOWER($2), $3, $4, $5, 'active')
+    `INSERT INTO admins (name, email, phone_number, password_hash, role_id, invited_by, status)
+     VALUES ($1, LOWER($2), $3, $4, $5, $6, 'active')
      RETURNING *`,
-    [input.name, input.email, input.passwordHash, input.roleId, input.invitedBy ?? null],
+    [
+      input.name,
+      input.email,
+      input.phoneNumber ?? null,
+      input.passwordHash,
+      input.roleId,
+      input.invitedBy ?? null,
+    ],
   );
   return rows[0];
+};
+
+export const emailExists = async (email: string): Promise<boolean> => {
+  const { rows } = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM admins WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL
+     ) AS exists`,
+    [email],
+  );
+  return rows[0]?.exists ?? false;
+};
+
+export const roleExists = async (roleId: string): Promise<boolean> => {
+  const { rows } = await pool.query<{ exists: boolean }>(
+    `SELECT EXISTS(SELECT 1 FROM admin_roles WHERE id = $1) AS exists`,
+    [roleId],
+  );
+  return rows[0]?.exists ?? false;
 };
 
 /**

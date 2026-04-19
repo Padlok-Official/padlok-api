@@ -25,5 +25,8 @@
   "ts-node": {
     "files": true,
     "transpileOnly": false
+  },
+  "ts-node": {
+    "files": true
   }
 }
