@@ -13,6 +13,10 @@ import { generalLimiter } from '@/middleware/security';
 import { errorHandler, notFoundHandler } from '@/middleware/errorHandler';
 import { ok, fail } from '@/utils/respond';
 import authRoutes from '@/features/auth/authRoutes';
+import analyticsRoutes from '@/features/analytics/analyticsRoutes';
+import roleRoutes from '@/features/role/roleRoutes';
+import permissionRoutes from '@/features/role/permissionRoutes';
+import adminRoutes from '@/features/admin/adminRoutes';
 
 export const createApp = (): Application => {
   const app = express();
@@ -70,10 +74,10 @@ export const createApp = (): Application => {
 
   // Feature routes
   app.use(`${env.apiPrefix}/auth`, authRoutes);
-  // Upcoming:
-  //   app.use(`${env.apiPrefix}/admins`, adminRoutes);
-  //   app.use(`${env.apiPrefix}/roles`, roleRoutes);
-  //   app.use(`${env.apiPrefix}/analytics`, analyticsRoutes);
+  app.use(`${env.apiPrefix}/analytics`, analyticsRoutes);
+  app.use(`${env.apiPrefix}/roles`, roleRoutes);
+  app.use(`${env.apiPrefix}/permissions`, permissionRoutes);
+  app.use(`${env.apiPrefix}/admins`, adminRoutes);
   //   app.use(`${env.apiPrefix}/disputes`, disputeRoutes);
   //   app.use(`${env.apiPrefix}/flags`, flagRoutes);
   //   app.use(`${env.apiPrefix}/notifications`, notificationRoutes);

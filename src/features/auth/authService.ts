@@ -6,8 +6,8 @@
  */
 
 import { env } from '@/config/env';
-import { Unauthorized, Forbidden } from '@/utils/AppError';
-import { verifyPassword } from '@/utils/password';
+import { BadRequest, Unauthorized, Forbidden } from '@/utils/AppError';
+import { hashPassword, verifyPassword } from '@/utils/password';
 import {
   signAccessToken,
   signRefreshToken,
@@ -16,7 +16,9 @@ import {
   parseDurationToMs,
 } from '@/utils/jwt';
 import { setCachedAdmin, invalidateCachedAdmin } from '@/utils/adminCache';
+import { withTransaction } from '@/utils/withTransaction';
 import * as AdminModel from '@/models/Admin';
+import * as AdminInvitationModel from '@/models/AdminInvitation';
 import * as RefreshTokenModel from '@/models/AdminRefreshToken';
 import * as AuditLogModel from '@/models/AdminAuditLog';
 import type { AdminDTO } from '@/types/admin';
@@ -178,6 +180,153 @@ export const logout = async (
     ipAddress: context.ipAddress,
     userAgent: context.userAgent,
   });
+};
+
+/**
+ * Preview an invitation by raw token — read-only lookup used by the
+ * accept-invite page to render "invited by X as Y" before the invitee
+ * submits their name + password.
+ *
+ * Returns a tight DTO with no sensitive fields. If the token is invalid
+ * in any way, throws BadRequest with a typed `reason` so the frontend
+ * can render the appropriate error state (expired / accepted / revoked /
+ * not_found).
+ */
+export interface InvitationPreview {
+  email: string;
+  roleName: string;
+  roleDescription: string | null;
+  inviterName: string;
+  expiresAt: string;
+}
+
+export type InvitationInvalidReason =
+  | 'not_found'
+  | 'expired'
+  | 'accepted'
+  | 'revoked';
+
+export const getInvitationPreview = async (
+  rawToken: string,
+): Promise<InvitationPreview> => {
+  const ctx = await AdminInvitationModel.findByRawTokenWithContext(rawToken);
+  if (!ctx) {
+    throw BadRequest('Invitation not found', { reason: 'not_found' as InvitationInvalidReason });
+  }
+
+  if (ctx.invitation.status === 'accepted') {
+    throw BadRequest('This invitation has already been accepted', {
+      reason: 'accepted' as InvitationInvalidReason,
+    });
+  }
+  if (ctx.invitation.status === 'revoked') {
+    throw BadRequest('This invitation has been revoked', {
+      reason: 'revoked' as InvitationInvalidReason,
+    });
+  }
+  // Pending-but-past-expiry is a soft-expired state: we still produce the
+  // typed 'expired' reason rather than relying on the invitation's own
+  // status column (which would require a separate sweep to set).
+  if (ctx.invitation.expires_at < new Date()) {
+    throw BadRequest('This invitation has expired', {
+      reason: 'expired' as InvitationInvalidReason,
+    });
+  }
+  if (ctx.invitation.status !== 'pending') {
+    // Safety net — status enum should be exhaustive above.
+    throw BadRequest('Invitation is not valid', {
+      reason: 'not_found' as InvitationInvalidReason,
+    });
+  }
+
+  return {
+    email: ctx.invitation.email,
+    roleName: ctx.role.name,
+    roleDescription: ctx.role.description,
+    inviterName: ctx.inviter?.name ?? 'A PadLok admin',
+    expiresAt: ctx.invitation.expires_at.toISOString(),
+  };
+};
+
+/**
+ * Consume an invitation: validate the token, create the admin with the
+ * role baked into the invitation, mark the invitation accepted, and
+ * return a fresh token pair so the new admin is logged in immediately.
+ *
+ * All writes run in a single transaction so we never end up with a
+ * created admin + unmarked invitation (or vice versa).
+ */
+export interface AcceptInvitationInput {
+  token: string;
+  name: string;
+  password: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+}
+
+export const acceptInvitation = async (
+  input: AcceptInvitationInput,
+): Promise<LoginResult> => {
+  const invitation = await AdminInvitationModel.findByRawToken(input.token);
+  if (!invitation) throw BadRequest('Invalid or expired invitation');
+
+  if (invitation.status !== 'pending') {
+    throw BadRequest(`Invitation is already ${invitation.status}`);
+  }
+  if (invitation.expires_at < new Date()) {
+    throw BadRequest('Invitation has expired — ask for a new one');
+  }
+
+  // Create admin + mark invitation accepted atomically
+  const passwordHash = await hashPassword(input.password);
+  const adminId = await withTransaction(async (client) => {
+    // Double-check email isn't already taken (race protection)
+    const existing = await client.query(
+      `SELECT id FROM admins WHERE LOWER(email) = $1 AND deleted_at IS NULL LIMIT 1`,
+      [invitation.email],
+    );
+    if (existing.rows.length > 0) {
+      throw new Error('Email already taken');
+    }
+
+    const admin = await AdminModel.createAdmin(
+      {
+        name: input.name.trim(),
+        email: invitation.email,
+        passwordHash,
+        roleId: invitation.role_id,
+        invitedBy: invitation.invited_by,
+      },
+      client,
+    );
+    await AdminInvitationModel.markAccepted(invitation.id, admin.id, client);
+    return admin.id;
+  });
+
+  await AuditLogModel.record({
+    adminId,
+    action: 'auth.invitation.accepted',
+    entityType: 'invitation',
+    entityId: invitation.id,
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent,
+  });
+
+  // Load the fresh admin with permissions + issue tokens
+  const awp = await AdminModel.findByIdWithPermissions(adminId);
+  if (!awp) throw new Error('Admin creation succeeded but lookup failed');
+
+  const pair = await issueTokenPair(awp.admin.id, awp.admin.email, awp.admin.role_id, {
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent,
+  });
+  await setCachedAdmin(awp.admin.id, awp);
+  await AdminModel.updateLastLogin(awp.admin.id, input.ipAddress);
+
+  return {
+    ...pair,
+    admin: AdminModel.toDTO(awp),
+  };
 };
 
 /**
