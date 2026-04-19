@@ -34,9 +34,13 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
 
   // Unknown / unhandled
   logger.error({ err, path: req.originalUrl }, 'Unhandled error');
+  // ?? doesn't catch empty strings — handle both null/undefined AND "".
+  const devMessage = ((err as Error)?.message || '').trim();
   return fail(
     res,
     500,
-    env.isProd ? 'Internal server error' : (err as Error)?.message ?? 'Internal server error',
+    env.isProd
+      ? 'Internal server error'
+      : devMessage || (err as { code?: string })?.code || 'Internal server error',
   );
 };

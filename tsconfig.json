@@ -20,7 +20,12 @@
     }
   },
   "include": ["src/**/*"],
+  "files": ["src/types/express.d.ts"],
   "exclude": ["node_modules", "dist"],
+  "ts-node": {
+    "files": true,
+    "transpileOnly": false
+  },
   "ts-node": {
     "files": true
   }

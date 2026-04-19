@@ -67,7 +67,9 @@ describe('POST /api/v1/auth/login', () => {
   });
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    // mockReset (not clearAllMocks) drains queued mockResolvedValueOnce.
+    pool.query.mockReset();
+    pool.connect.mockReset();
     clearRedisStore();
   });
 
@@ -177,7 +179,9 @@ describe('GET /api/v1/auth/me', () => {
   });
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    // mockReset (not clearAllMocks) drains queued mockResolvedValueOnce.
+    pool.query.mockReset();
+    pool.connect.mockReset();
     clearRedisStore();
   });
 
@@ -273,7 +277,9 @@ describe('POST /api/v1/auth/logout', () => {
   });
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    // mockReset (not clearAllMocks) drains queued mockResolvedValueOnce.
+    pool.query.mockReset();
+    pool.connect.mockReset();
     clearRedisStore();
   });
 

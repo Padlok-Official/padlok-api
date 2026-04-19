@@ -63,3 +63,37 @@ export const logout: RequestHandler = async (req, res, next) => {
     next(err);
   }
 };
+
+export const acceptInvitation: RequestHandler = async (req, res, next) => {
+  try {
+    const { token, name, password } = req.body as {
+      token: string;
+      name: string;
+      password: string;
+    };
+    const result = await authService.acceptInvitation({
+      token,
+      name,
+      password,
+      ipAddress: ipFrom(req),
+      userAgent: uaFrom(req),
+    });
+    return ok(res, result, 'Welcome to PadLok', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /auth/invitations/:token — read-only preview for the accept-invite
+ * page. Public endpoint: the token itself is the capability.
+ */
+export const invitationPreview: RequestHandler = async (req, res, next) => {
+  try {
+    const { token } = req.params;
+    const preview = await authService.getInvitationPreview(token);
+    return ok(res, preview);
+  } catch (err) {
+    next(err);
+  }
+};
