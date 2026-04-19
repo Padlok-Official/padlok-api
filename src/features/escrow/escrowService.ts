@@ -304,6 +304,150 @@ export const listDisputes = async (
   };
 };
 
+export interface DisputeStats {
+  open: number;
+  under_review: number;
+  resolved_this_month: number;
+  avg_resolution_days: string;
+}
+
+export const getDisputeStats = async (): Promise<DisputeStats> => {
+  const { rows } = await pool.query<{
+    open: string;
+    under_review: string;
+    resolved_this_month: string;
+    avg_hours: string | null;
+  }>(
+    `SELECT
+       COUNT(*) FILTER (WHERE status = 'open')::text AS open,
+       COUNT(*) FILTER (WHERE status = 'under_review')::text AS under_review,
+       COUNT(*) FILTER (
+         WHERE status IN ('resolved_refund', 'resolved_release', 'closed')
+           AND resolved_at >= date_trunc('month', NOW())
+       )::text AS resolved_this_month,
+       AVG(EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600) FILTER (
+         WHERE resolved_at IS NOT NULL
+       )::text AS avg_hours
+     FROM disputes`,
+  );
+  const row = rows[0];
+  const avgDays = row?.avg_hours ? (Number(row.avg_hours) / 24).toFixed(1) : '0.0';
+  return {
+    open: Number(row?.open ?? 0),
+    under_review: Number(row?.under_review ?? 0),
+    resolved_this_month: Number(row?.resolved_this_month ?? 0),
+    avg_resolution_days: avgDays,
+  };
+};
+
+export interface DisputeTimelineEvent {
+  at: string;
+  kind: 'escrow_created' | 'funded' | 'delivery_confirmed' | 'buyer_confirmed' | 'dispute_raised' | 'dispute_resolved';
+  actor_id: string | null;
+  actor_name: string | null;
+  detail: string;
+}
+
+export const getDisputeTimeline = async (
+  disputeId: string,
+): Promise<DisputeTimelineEvent[]> => {
+  const { rows: disputeRows } = await pool.query<{
+    escrow_id: string;
+    dispute_created_at: string;
+    resolved_at: string | null;
+    reason: string;
+    raised_by: string;
+    raised_by_name: string | null;
+    admin_id: string | null;
+    admin_notes: string | null;
+    status: string;
+  }>(
+    `SELECT d.escrow_transaction_id AS escrow_id,
+            d.created_at AS dispute_created_at,
+            d.resolved_at,
+            d.reason,
+            d.raised_by,
+            ru.name AS raised_by_name,
+            d.admin_id,
+            d.admin_notes,
+            d.status
+     FROM disputes d
+     LEFT JOIN users ru ON ru.id = d.raised_by
+     WHERE d.id = $1`,
+    [disputeId],
+  );
+  const dispute = disputeRows[0];
+  if (!dispute) return [];
+
+  const { rows: escrowRows } = await pool.query<{
+    created_at: string;
+    delivery_confirmed_at: string | null;
+    buyer_confirmed_at: string | null;
+    user_id: string;
+    receiver_id: string;
+    buyer_name: string | null;
+    seller_name: string | null;
+  }>(
+    `SELECT t.created_at, t.delivery_confirmed_at, t.buyer_confirmed_at,
+            t.user_id, t.receiver_id,
+            bu.name AS buyer_name, su.name AS seller_name
+     FROM transactions t
+     LEFT JOIN users bu ON bu.id = t.user_id
+     LEFT JOIN users su ON su.id = t.receiver_id
+     WHERE t.id = $1`,
+    [dispute.escrow_id],
+  );
+  const escrow = escrowRows[0];
+
+  const events: DisputeTimelineEvent[] = [];
+
+  if (escrow) {
+    events.push({
+      at: escrow.created_at,
+      kind: 'escrow_created',
+      actor_id: escrow.user_id,
+      actor_name: escrow.buyer_name,
+      detail: 'Escrow initiated',
+    });
+    if (escrow.delivery_confirmed_at) {
+      events.push({
+        at: escrow.delivery_confirmed_at,
+        kind: 'delivery_confirmed',
+        actor_id: escrow.receiver_id,
+        actor_name: escrow.seller_name,
+        detail: 'Seller confirmed delivery',
+      });
+    }
+    if (escrow.buyer_confirmed_at) {
+      events.push({
+        at: escrow.buyer_confirmed_at,
+        kind: 'buyer_confirmed',
+        actor_id: escrow.user_id,
+        actor_name: escrow.buyer_name,
+        detail: 'Buyer confirmed receipt',
+      });
+    }
+  }
+  events.push({
+    at: dispute.dispute_created_at,
+    kind: 'dispute_raised',
+    actor_id: dispute.raised_by,
+    actor_name: dispute.raised_by_name,
+    detail: dispute.reason,
+  });
+  if (dispute.resolved_at) {
+    events.push({
+      at: dispute.resolved_at,
+      kind: 'dispute_resolved',
+      actor_id: dispute.admin_id,
+      actor_name: null,
+      detail: dispute.admin_notes ?? `Resolved (${dispute.status})`,
+    });
+  }
+
+  return events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+};
+
 export interface ResolveDisputeInput {
   disputeId: string;
   adminId: string;

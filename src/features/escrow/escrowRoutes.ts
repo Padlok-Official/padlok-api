@@ -23,6 +23,20 @@ router.get(
   escrowController.getStats,
 );
 
+// GET /api/v1/escrow/disputes/stats — queue health (open + avg resolution).
+router.get(
+  '/disputes/stats',
+  requirePermission('view_disputes'),
+  escrowController.disputeStats,
+);
+
+// GET /api/v1/escrow/disputes/:id/timeline — chronological event list.
+router.get(
+  '/disputes/:id/timeline',
+  requirePermission('view_disputes'),
+  escrowController.disputeTimeline,
+);
+
 // GET /api/v1/escrow/disputes — list disputes.
 router.get(
   '/disputes',

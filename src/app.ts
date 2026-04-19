@@ -19,6 +19,9 @@ import permissionRoutes from '@/features/role/permissionRoutes';
 import adminRoutes from '@/features/admin/adminRoutes';
 import escrowRoutes from '@/features/escrow/escrowRoutes';
 import walletRoutes from '@/features/wallet/walletRoutes';
+import notificationRoutes from '@/features/notification/notificationRoutes';
+import userRoutes from '@/features/user/userRoutes';
+import flagRoutes from '@/features/flag/flagRoutes';
 
 export const createApp = (): Application => {
   const app = express();
@@ -82,8 +85,9 @@ export const createApp = (): Application => {
   app.use(`${env.apiPrefix}/roles`, roleRoutes);
   app.use(`${env.apiPrefix}/permissions`, permissionRoutes);
   app.use(`${env.apiPrefix}/admins`, adminRoutes);
-  //   app.use(`${env.apiPrefix}/flags`, flagRoutes);
-  //   app.use(`${env.apiPrefix}/notifications`, notificationRoutes);
+  app.use(`${env.apiPrefix}/notifications`, notificationRoutes);
+  app.use(`${env.apiPrefix}/users`, userRoutes);
+  app.use(`${env.apiPrefix}/flags`, flagRoutes);
 
   // 404 + error handlers (must be last)
   app.use(notFoundHandler);
