@@ -29,7 +29,10 @@ export const env = {
   isProd: process.env.NODE_ENV === 'production',
   port: toNumber(optional('PORT', '4000'), 4000),
   apiPrefix: optional('API_PREFIX', '/api/v1'),
-  corsOrigin: optional('CORS_ORIGIN', 'http://localhost:5173'),
+  corsOrigin: optional('CORS_ORIGIN', 'http://localhost:5173')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
 
   db: {
     url: process.env.DATABASE_URL,
