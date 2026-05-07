@@ -4,7 +4,7 @@
   "description": "PadLok unified backend API — admin dashboard + client features",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc-alias",
     "start": "node dist/server.js",
     "dev": "nodemon",
     "migrate": "ts-node -r tsconfig-paths/register src/database/runMigrations.ts",
@@ -69,6 +69,7 @@
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.9",
     "ts-node": "^10.9.2",
+    "tsc-alias": "^1.8.17",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.2"
   }
