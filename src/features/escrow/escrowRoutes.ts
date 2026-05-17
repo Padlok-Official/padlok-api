@@ -23,6 +23,13 @@ router.get(
   escrowController.getStats,
 );
 
+// GET /api/v1/escrow/disputes/message-templates
+router.get(
+  '/disputes/message-templates',
+  requirePermission('send_messages'),
+  escrowController.getMessageTemplates,
+);
+
 // GET /api/v1/escrow/disputes/stats — queue health (open + avg resolution).
 router.get(
   '/disputes/stats',
@@ -60,6 +67,59 @@ router.post(
   validators.resolveDisputeValidators,
   handleValidation,
   escrowController.resolveDispute,
+);
+
+// POST /api/v1/escrow/disputes/:id/payout
+router.post(
+  '/disputes/:id/payout',
+  requireAnyPermission(['resolve_disputes', 'release_funds']),
+  validators.payoutRefundValidators,
+  handleValidation,
+  escrowController.payoutDispute,
+);
+
+// POST /api/v1/escrow/disputes/:id/refund
+router.post(
+  '/disputes/:id/refund',
+  requireAnyPermission(['resolve_disputes', 'process_refunds']),
+  validators.payoutRefundValidators,
+  handleValidation,
+  escrowController.refundDispute,
+);
+
+// POST /api/v1/escrow/disputes/:id/penalize
+router.post(
+  '/disputes/:id/penalize',
+  requireAnyPermission(['suspend_users', 'flag_users']),
+  validators.penalizeUserValidators,
+  handleValidation,
+  escrowController.penalizeUser,
+);
+
+// POST /api/v1/escrow/disputes/:id/flag
+router.post(
+  '/disputes/:id/flag',
+  requirePermission('apply_flags'),
+  validators.flagDisputeValidators,
+  handleValidation,
+  escrowController.flagDispute,
+);
+
+
+// POST /api/v1/escrow/disputes/:id/messages
+router.post(
+  '/disputes/:id/messages',
+  requirePermission('send_messages'),
+  validators.sendMessageValidators,
+  handleValidation,
+  escrowController.sendMessage,
+);
+
+// GET /api/v1/escrow/disputes/:id/messages
+router.get(
+  '/disputes/:id/messages',
+  requirePermission('view_disputes'),
+  escrowController.getMessages,
 );
 
 // GET /api/v1/escrow — list escrow transactions across all users.

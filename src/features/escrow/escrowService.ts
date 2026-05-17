@@ -624,3 +624,64 @@ export const resolveDispute = async (
     };
   });
 };
+
+export interface MessageTemplateRow {
+  id: string;
+  title: string;
+  body: string;
+}
+
+export const getMessageTemplates = async (): Promise<MessageTemplateRow[]> => {
+  const { rows } = await pool.query<MessageTemplateRow>(
+    `SELECT id, title, body FROM dispute_message_templates ORDER BY created_at ASC`
+  );
+  return rows;
+};
+
+export interface DisputeMessageRow {
+  id: string;
+  dispute_id: string;
+  recipient_id: string;
+  admin_id: string;
+  template_id: string | null;
+  body: string;
+  channel: string;
+  created_at: string;
+}
+
+export interface SendMessageInput {
+  disputeId: string;
+  recipientId: string;
+  adminId: string;
+  templateId?: string;
+  body: string;
+  channel: string;
+}
+
+export const sendDisputeMessage = async (input: SendMessageInput): Promise<DisputeMessageRow> => {
+  const { rows } = await pool.query<DisputeMessageRow>(
+    `INSERT INTO dispute_messages (dispute_id, recipient_id, admin_id, template_id, body, channel)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, dispute_id, recipient_id, admin_id, template_id, body, channel, created_at`,
+    [
+      input.disputeId,
+      input.recipientId,
+      input.adminId,
+      input.templateId || null,
+      input.body,
+      input.channel,
+    ]
+  );
+  return rows[0];
+};
+
+export const getDisputeMessages = async (disputeId: string): Promise<DisputeMessageRow[]> => {
+  const { rows } = await pool.query<DisputeMessageRow>(
+    `SELECT id, dispute_id, recipient_id, admin_id, template_id, body, channel, created_at
+     FROM dispute_messages
+     WHERE dispute_id = $1
+     ORDER BY created_at DESC`,
+    [disputeId]
+  );
+  return rows;
+};
